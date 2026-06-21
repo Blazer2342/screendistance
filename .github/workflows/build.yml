@@ -1,0 +1,71 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodu indir
+        uses: actions/checkout@v4
+
+      - name: Zip dosyasini bul ve ac (eger varsa)
+        run: |
+          ZIPFILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+          if [ -n "$ZIPFILE" ]; then
+            echo "Zip bulundu: $ZIPFILE - aciliyor..."
+            TMPDIR=$(mktemp -d)
+            unzip -q "$ZIPFILE" -d "$TMPDIR"
+            INNER=$(find "$TMPDIR" -maxdepth 1 -mindepth 1 -type d | head -n 1)
+            if [ -n "$INNER" ] && [ "$(ls -A "$TMPDIR" | wc -l)" -eq 1 ]; then
+              SRC="$INNER"
+            else
+              SRC="$TMPDIR"
+            fi
+            echo "Dosyalar kopyalaniyor: $SRC -> repo koku"
+            cp -rn "$SRC"/. .
+            rm -rf "$TMPDIR"
+          else
+            echo "Zip bulunamadi, normal dosyalar kullanilacak."
+          fi
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Flutter kur
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Bagimliliklari yukle
+        run: flutter pub get
+
+      - name: APK derle (release)
+        run: flutter build apk --release
+
+      - name: APK'yi yapay olarak yukle (indirilebilir hale getir)
+        uses: actions/upload-artifact@v4
+        with:
+          name: screendistance-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+      - name: AAB de derle (ileride Play Store icin)
+        run: flutter build appbundle --release
+
+      - name: AAB'yi yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: screendistance-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
